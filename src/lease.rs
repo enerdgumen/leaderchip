@@ -4,7 +4,7 @@ use anyhow::{anyhow, Result};
 use etcd_client::{Client, LeaseKeepAliveStream, LeaseKeeper};
 use tokio::sync::oneshot;
 use tokio::task;
-use tokio::time::delay_for;
+use tokio::time::sleep;
 use tracing::Instrument;
 use tracing::{debug, info, span, warn, Level};
 
@@ -43,7 +43,7 @@ async fn lease_keep_alive(
     loop {
         debug!(ttl, "send keep alive");
         tokio::select! {
-            _ = delay_for(Duration::from_secs_f64((ttl as f64) / 2.0)) => {},
+            _ = sleep(Duration::from_secs_f64((ttl as f64) / 2.0)) => {},
             _ = &mut cancel => break
         }
         req.keep_alive().await?;

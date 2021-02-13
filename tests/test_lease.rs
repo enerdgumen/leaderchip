@@ -3,7 +3,7 @@ use std::time::Duration;
 use etcd_client::Client as EtcdClient;
 use testcontainers::images::generic::{GenericImage, Stream, WaitFor};
 use testcontainers::{clients, Container, Docker, Image};
-use tokio::time::delay_for;
+use tokio::time::sleep;
 use tracing::Level;
 
 use leaderchip_etcd::lease;
@@ -15,7 +15,7 @@ async fn should_keep_alive_leases() {
     let docker = clients::Cli::default();
     let (mut etcd, _container) = new_etcd_client(&docker).await;
     let lease = lease::acquire_lease(&etcd, 1).await.unwrap();
-    delay_for(Duration::from_secs(3)).await;
+    sleep(Duration::from_secs(3)).await;
     let leases = etcd.leases().await.unwrap();
     assert_eq!(1, leases.leases().len());
     assert_eq!(lease.id, leases.leases().get(0).unwrap().id());
