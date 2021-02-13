@@ -14,11 +14,11 @@ async fn should_keep_alive_leases() {
 
     let docker = clients::Cli::default();
     let (mut etcd, _container) = new_etcd_client(&docker).await;
-    let lease_id = lease::acquire_lease(&etcd, 1).await.unwrap();
+    let lease = lease::acquire_lease(&etcd, 1).await.unwrap();
     delay_for(Duration::from_secs(3)).await;
     let leases = etcd.leases().await.unwrap();
     assert_eq!(1, leases.leases().len());
-    assert_eq!(lease_id, leases.leases().get(0).unwrap().id());
+    assert_eq!(lease.id, leases.leases().get(0).unwrap().id());
 }
 
 fn setup_tracing() {
