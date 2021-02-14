@@ -21,6 +21,25 @@ async fn should_keep_alive_leases() {
     assert_eq!(lease.id, leases.leases().get(0).unwrap().id());
 }
 
+#[tokio::test]
+async fn dropped_lease_is_not_kept_alive() {
+    setup_tracing();
+    let docker = clients::Cli::default();
+    let (mut etcd, _container) = new_etcd_client(&docker).await;
+
+    // given a lease
+    let lease = lease::acquire_lease(&etcd, 1).await.unwrap();
+    sleep(Duration::from_secs(2)).await;
+
+    // when the lease is dropped
+    drop(lease);
+
+    // then the lease is not alive anymore
+    sleep(Duration::from_secs(2)).await;
+    let leases = etcd.leases().await.unwrap();
+    assert_eq!(0, leases.leases().len());
+}
+
 fn setup_tracing() {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
         .with_max_level(Level::INFO)

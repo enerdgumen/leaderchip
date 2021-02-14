@@ -10,7 +10,7 @@ use tracing::{debug, info, span, warn, Level};
 
 pub struct Lease {
     pub id: i64,
-    cancel: oneshot::Sender<()>,
+    _cancel: oneshot::Receiver<()>,
 }
 
 pub async fn acquire_lease(client: &Client, ttl: i64) -> Result<Lease> {
@@ -22,14 +22,14 @@ pub async fn acquire_lease(client: &Client, ttl: i64) -> Result<Lease> {
     let (cancel_tx, cancel_rx) = oneshot::channel();
     let _join = task::spawn(async move {
         let span = span!(Level::INFO, "keep alive", lease_id);
-        lease_keep_alive(ttl, keeper, stream, cancel_rx)
+        lease_keep_alive(ttl, keeper, stream, cancel_tx)
             .instrument(span)
             .await
             .expect("error handling lease")
     });
     Ok(Lease {
         id: lease_id,
-        cancel: cancel_tx,
+        _cancel: cancel_rx,
     })
 }
 
@@ -37,14 +37,17 @@ async fn lease_keep_alive(
     mut ttl: i64,
     mut req: LeaseKeeper,
     mut res: LeaseKeepAliveStream,
-    mut cancel: oneshot::Receiver<()>,
+    mut cancel: oneshot::Sender<()>,
 ) -> Result<()> {
     info!("begin");
     loop {
         debug!(ttl, "send keep alive");
         tokio::select! {
             _ = sleep(Duration::from_secs_f64((ttl as f64) / 2.0)) => {},
-            _ = &mut cancel => break
+            _ = cancel.closed() => {
+                info!("cancelled");
+                break;
+            }
         }
         req.keep_alive().await?;
         let message = res
