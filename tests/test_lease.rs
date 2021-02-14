@@ -11,11 +11,14 @@ use leaderchip_etcd::lease;
 #[tokio::test]
 async fn should_keep_alive_leases() {
     setup_tracing();
-
     let docker = clients::Cli::default();
     let (mut etcd, _container) = new_etcd_client(&docker).await;
+
+    // when a lease is acquired
     let lease = lease::acquire_lease(&etcd, 1).await.unwrap();
     sleep(Duration::from_secs(3)).await;
+
+    // then the lease is kept alive
     let leases = etcd.leases().await.unwrap();
     assert_eq!(1, leases.leases().len());
     assert_eq!(lease.id, leases.leases().get(0).unwrap().id());
