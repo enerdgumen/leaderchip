@@ -387,6 +387,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "etcd-client",
+ "once_cell",
  "testcontainers",
  "tokio",
  "tracing",

@@ -1,37 +1,34 @@
+#![feature(once_cell)]
+
 use std::time::Duration;
 
-use etcd_client::Client as EtcdClient;
-use testcontainers::images::generic::{GenericImage, Stream, WaitFor};
-use testcontainers::{clients, Container, Docker, Image};
 use tokio::time::sleep;
-use tracing::Level;
 
+use context::TestContext;
 use leaderchip_etcd::lease;
+
+mod context;
 
 #[tokio::test]
 async fn should_keep_alive_leases() {
-    setup_tracing();
-    let docker = clients::Cli::default();
-    let (mut etcd, _container) = new_etcd_client(&docker).await;
+    let mut ctx = TestContext::new().await;
 
     // when a lease is acquired
-    let lease = lease::acquire_lease(&etcd, 1).await.unwrap();
+    let lease = lease::acquire_lease(&ctx.etcd, 1).await.unwrap();
     sleep(Duration::from_secs(3)).await;
 
     // then the lease is kept alive
-    let leases = etcd.leases().await.unwrap();
+    let leases = ctx.etcd.leases().await.unwrap();
     assert_eq!(1, leases.leases().len());
     assert_eq!(lease.id, leases.leases().get(0).unwrap().id());
 }
 
 #[tokio::test]
 async fn dropped_lease_is_not_kept_alive() {
-    setup_tracing();
-    let docker = clients::Cli::default();
-    let (mut etcd, _container) = new_etcd_client(&docker).await;
+    let mut ctx = TestContext::new().await;
 
     // given a lease
-    let lease = lease::acquire_lease(&etcd, 1).await.unwrap();
+    let lease = lease::acquire_lease(&ctx.etcd, 1).await.unwrap();
     sleep(Duration::from_secs(2)).await;
 
     // when the lease is dropped
@@ -39,46 +36,23 @@ async fn dropped_lease_is_not_kept_alive() {
 
     // then the lease is not alive anymore
     sleep(Duration::from_secs(2)).await;
-    let leases = etcd.leases().await.unwrap();
+    let leases = ctx.etcd.leases().await.unwrap();
     assert_eq!(0, leases.leases().len());
 }
 
-fn setup_tracing() {
-    let subscriber = tracing_subscriber::FmtSubscriber::builder()
-        .with_max_level(Level::INFO)
-        .finish();
-    tracing::subscriber::set_global_default(subscriber).unwrap();
-}
+#[tokio::test]
+async fn can_listen_lease_expiration() {
+    let mut ctx = TestContext::new().await;
 
-async fn new_etcd_client(
-    docker: &clients::Cli,
-) -> (EtcdClient, Container<'_, clients::Cli, GenericImage>) {
-    let image = GenericImage::new("quay.io/coreos/etcd:v3.4.13")
-        .with_entrypoint("/usr/local/bin/etcd")
-        .with_args(
-            vec![
-                "--name=node1",
-                "--initial-advertise-peer-urls=http://127.0.0.1:2380",
-                "--listen-peer-urls=http://0.0.0.0:2380",
-                "--listen-client-urls=http://0.0.0.0:2379",
-                "--advertise-client-urls=http://127.0.0.1:2379",
-                "--initial-cluster=node1=http://127.0.0.1:2380",
-                "--initial-cluster-state=new",
-                "--heartbeat-interval=250",
-                "--election-timeout=1250",
-            ]
-            .into_iter()
-            .map(String::from)
-            .collect(),
-        )
-        .with_wait_for(WaitFor::LogMessage {
-            message: "serving insecure client requests".into(),
-            stream: Stream::StdErr,
-        });
-    let container = docker.run(image);
-    let port = container.get_host_port(2379).unwrap();
-    let etcd = EtcdClient::connect([format!("127.0.0.1:{}", port)], None)
-        .await
-        .unwrap();
-    (etcd, container)
+    // given a lease
+    let lease = lease::acquire_lease(&ctx.etcd, 1).await.unwrap();
+    sleep(Duration::from_secs(1)).await;
+
+    // when the lease expires
+    ctx.etcd.lease_revoke(lease.id).await.unwrap();
+    sleep(Duration::from_secs(1)).await;
+
+    // the channel is notified
+    let result = lease.cancel.await;
+    assert_eq!(Ok(()), result);
 }

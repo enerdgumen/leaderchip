@@ -10,7 +10,7 @@ use tracing::{debug, info, span, warn, Level};
 
 pub struct Lease {
     pub id: i64,
-    _cancel: oneshot::Receiver<()>,
+    pub cancel: oneshot::Receiver<()>,
 }
 
 pub async fn acquire_lease(client: &Client, ttl: i64) -> Result<Lease> {
@@ -29,7 +29,7 @@ pub async fn acquire_lease(client: &Client, ttl: i64) -> Result<Lease> {
     });
     Ok(Lease {
         id: lease_id,
-        _cancel: cancel_rx,
+        cancel: cancel_rx,
     })
 }
 
@@ -57,6 +57,9 @@ async fn lease_keep_alive(
         ttl = message.ttl();
         if ttl == 0 {
             warn!("lease expired");
+            if let Err(_) = cancel.send(()) {
+                warn!("unhandled lease expiration")
+            }
             break;
         }
     }
