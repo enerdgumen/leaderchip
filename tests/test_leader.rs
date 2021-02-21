@@ -11,7 +11,7 @@ mod context;
 async fn can_become_leader() {
     let mut context = TestContext::new().await;
 
-    let instance1 = request_leadership(&context.etcd, "srv").await;
+    let instance1 = request_leadership(&context.etcd, "srv");
     sleep(Duration::from_secs(1)).await;
     let lease1 = if let LeadershipStatus::Granted { lease_id } = *instance1.watch.borrow() {
         lease_id
@@ -19,7 +19,7 @@ async fn can_become_leader() {
         panic!("instance1 should be the leader")
     };
 
-    let instance2 = request_leadership(&context.etcd, "srv").await;
+    let instance2 = request_leadership(&context.etcd, "srv");
     sleep(Duration::from_secs(1)).await;
     assert!(matches!(
         *instance2.watch.borrow(),
@@ -32,6 +32,29 @@ async fn can_become_leader() {
         *instance1.watch.borrow(),
         LeadershipStatus::Revoked
     ));
+    assert!(matches!(
+        *instance2.watch.borrow(),
+        LeadershipStatus::Granted { .. }
+    ));
+}
+
+#[tokio::test]
+async fn drop_handle_give_up_leadership() {
+    let context = TestContext::new().await;
+
+    // given a leader instance
+    let instance1 = request_leadership(&context.etcd, "srv");
+    sleep(Duration::from_secs(1)).await;
+
+    // ...and a follower
+    let instance2 = request_leadership(&context.etcd, "srv");
+    sleep(Duration::from_secs(1)).await;
+
+    // when the leader gives up its status
+    drop(instance1);
+    sleep(Duration::from_secs(3)).await;
+
+    // then the follower is promoted to leader
     assert!(matches!(
         *instance2.watch.borrow(),
         LeadershipStatus::Granted { .. }
