@@ -21,7 +21,7 @@ pub async fn acquire_lease(client: &Client, ttl: i64) -> Result<Lease> {
     let (keeper, stream) = client.lease_keep_alive(lease_id).await?;
     let (cancel_tx, cancel_rx) = oneshot::channel();
     let _join = task::spawn(async move {
-        let span = span!(Level::INFO, "keep alive", lease_id);
+        let span = span!(Level::INFO, "keep-alive", lease_id);
         lease_keep_alive(ttl, keeper, stream, cancel_tx)
             .instrument(span)
             .await
@@ -40,27 +40,26 @@ async fn lease_keep_alive(
     mut cancel: oneshot::Sender<()>,
 ) -> Result<()> {
     info!("begin");
-    loop {
-        debug!(ttl, "send keep alive");
-        tokio::select! {
-            _ = sleep(Duration::from_secs_f64((ttl as f64) / 2.0)) => {},
-            _ = cancel.closed() => {
-                info!("cancelled");
-                break;
-            }
+    let proceed = async {
+        while ttl > 0 {
+            debug!(ttl, "send keep alive");
+            sleep(Duration::from_secs_f64((ttl as f64) / 2.0)).await;
+            req.keep_alive().await?;
+            let message = res.message().await?;
+            let response = message.ok_or_else(|| anyhow!("no keepalive response"))?;
+            ttl = response.ttl();
         }
-        req.keep_alive().await?;
-        let message = res
-            .message()
-            .await?
-            .ok_or_else(|| anyhow!("no keepalive response"))?;
-        ttl = message.ttl();
-        if ttl == 0 {
+        Result::<()>::Ok(())
+    };
+    tokio::select! {
+        _ = proceed => {
             warn!("lease expired");
             if let Err(_) = cancel.send(()) {
-                warn!("unhandled lease expiration")
+                warn!("failed to notify lease expiration")
             }
-            break;
+        },
+        _ = cancel.closed() => {
+            info!("cancelled");
         }
     }
     info!("end");
