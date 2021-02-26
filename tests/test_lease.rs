@@ -35,7 +35,7 @@ async fn dropped_lease_is_not_kept_alive() {
     drop(lease);
 
     // then the lease is not alive anymore
-    sleep(Duration::from_secs(2)).await;
+    sleep(Duration::from_secs(1)).await;
     let leases = ctx.etcd.leases().await.unwrap();
     assert_eq!(0, leases.leases().len());
 }
