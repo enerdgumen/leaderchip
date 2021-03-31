@@ -85,7 +85,9 @@ async fn keep_alive_task(mut lease: Lease, mut cancel: oneshot::Sender<()>) -> R
         },
         _ = cancel.closed() => {
             info!("cancelled");
-            let _ = lease.revoke().await;
+            if let Err(e) = lease.revoke().await {
+                warn!("failed to revoke lease: {}", e);
+            }
         }
     }
     info!("end");
