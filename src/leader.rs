@@ -11,13 +11,12 @@ pub struct LeaderHandle {
 }
 
 pub enum LeadershipStatus {
-    Initial,
-    Granted { lease_id: i64 },
-    Revoked,
+    Leader { lease_id: i64 },
+    Follower,
 }
 
 pub fn request_leadership(etcd: &Client, name: &'static str) -> LeaderHandle {
-    let (watch_tx, watch_rx) = watch::channel(LeadershipStatus::Initial);
+    let (watch_tx, watch_rx) = watch::channel(LeadershipStatus::Follower);
     let (cancel_tx, cancel_rx) = oneshot::channel();
     let _ = task::spawn(handle_leadership(etcd.clone(), name, watch_tx, cancel_tx));
     return LeaderHandle {
@@ -40,14 +39,14 @@ async fn handle_leadership(
             let response = etcd.campaign(name, "", lease.id).await.unwrap();
             let key = response.leader().unwrap().key_str().unwrap();
             info!(key, "granted");
-            if let Err(_) = watch.send(LeadershipStatus::Granted { lease_id: lease.id }) {
+            if let Err(_) = watch.send(LeadershipStatus::Leader { lease_id: lease.id }) {
                 warn!(lease = lease.id, "error notifying leadership granted");
             }
             if let Err(_) = lease.cancel.await {
                 warn!(lease = lease.id, "error waiting for lease expiration");
             }
             info!(key, "revoked");
-            if let Err(_) = watch.send(LeadershipStatus::Revoked) {
+            if let Err(_) = watch.send(LeadershipStatus::Follower) {
                 warn!(lease = lease.id, "error notifying leadership revoked");
             }
         }

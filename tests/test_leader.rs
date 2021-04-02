@@ -13,7 +13,7 @@ async fn can_become_leader() {
 
     let instance1 = request_leadership(&context.etcd, "srv");
     sleep(Duration::from_secs(1)).await;
-    let lease1 = if let LeadershipStatus::Granted { lease_id } = *instance1.watch.borrow() {
+    let lease1 = if let LeadershipStatus::Leader { lease_id } = *instance1.watch.borrow() {
         lease_id
     } else {
         panic!("instance1 should be the leader")
@@ -23,18 +23,18 @@ async fn can_become_leader() {
     sleep(Duration::from_secs(1)).await;
     assert!(matches!(
         *instance2.watch.borrow(),
-        LeadershipStatus::Initial
+        LeadershipStatus::Requested
     ));
 
     context.etcd.lease_revoke(lease1).await.unwrap();
     sleep(Duration::from_secs(1)).await;
     assert!(matches!(
         *instance1.watch.borrow(),
-        LeadershipStatus::Revoked
+        LeadershipStatus::Follower
     ));
     assert!(matches!(
         *instance2.watch.borrow(),
-        LeadershipStatus::Granted { .. }
+        LeadershipStatus::Leader { .. }
     ));
 }
 
@@ -57,6 +57,6 @@ async fn drop_handle_give_up_leadership() {
     // then the follower is promoted to leader
     assert!(matches!(
         *instance2.watch.borrow(),
-        LeadershipStatus::Granted { .. }
+        LeadershipStatus::Leader { .. }
     ));
 }
