@@ -1,7 +1,8 @@
 # Leaderchip
 
 An early stage library useful for handling leader election in a microservice environment.
-It is based on the Tokio runtime and currently only supports only.
+
+It is based on the Tokio runtime and currently only supports Etcd v3.
 
 ## Usage
 
