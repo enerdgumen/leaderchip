@@ -68,7 +68,6 @@ pub async fn acquire_lease(etcd: &Client, ttl: i64) -> Result<LeaseHandle> {
 
 #[tracing::instrument(name="keep-alive", skip(lease, cancel), fields(lease_id=lease.id))]
 async fn keep_alive_task(mut lease: Lease, mut cancel: oneshot::Sender<()>) -> Result<()> {
-    info!("begin");
     let proceed = async {
         while lease.is_alive() {
             sleep(Duration::from_secs_f64((lease.ttl as f64) / 2.0)).await;
@@ -90,6 +89,5 @@ async fn keep_alive_task(mut lease: Lease, mut cancel: oneshot::Sender<()>) -> R
             }
         }
     }
-    info!("end");
     Ok(())
 }
